@@ -60,14 +60,15 @@ jobs:
         run: |
           BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           echo "path=$BUILD_TOOLS" >> "$GITHUB_OUTPUT"
-
-      - name: Align APK
-        run: |
-          "$BUILD_TOOLS/zipalign" -f -p 4 \
-            app/build/outputs/apk/release/app-release.apk \
-            personal-file-scraper-aligned.apk
-
-      - name: Sign APK
+ - name: Align APK
+  env:
+    BUILD_TOOLS: ${{ steps.build-tools.outputs.path }}
+  run: |
+    "$BUILD_TOOLS/zipalign" -f -p 4 \
+      app/build/outputs/apk/release/app-release.apk \
+      personal-file-scraper-aligned.apk
+      
+  - name: Sign APK
         env:
           BUILD_TOOLS: ${{ steps.build-tools.outputs.path }}
         run: |
@@ -78,8 +79,8 @@ jobs:
             --ks-key-alias release \
             --out personal-file-scraper.apk \
             personal-file-scraper-aligned.apk
-
-      - name: Verify APK
+            
+        - name: Verify APK
         env:
           BUILD_TOOLS: ${{ steps.build-tools.outputs.path }}
         run: |
