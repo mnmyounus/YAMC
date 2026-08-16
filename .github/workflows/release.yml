@@ -1,26 +1,13 @@
-name: Release APK
-
-# Builds an optimized release APK, signs it automatically with a temporary
-# keystore, and publishes it to the repository Releases page.
-#
-# Manual run:
-# GitHub -> Actions -> Release APK -> Run workflow
-#
-# Tag run:
-# git tag v1.0
-# git push origin v1.0
+name: Build APK
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -39,59 +26,17 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build release APK
-        run: gradle assembleRelease
+      - name: Build Debug APK
+        run: gradle assembleDebug
 
-      - name: Generate temporary signing key
+      - name: Rename APK
         run: |
-          keytool -genkeypair \
-            -v \
-            -keystore release-keystore.jks \
-            -alias release \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass android \
-            -keypass android \
-            -dname "CN=Personal Media Archiver, OU=Android, O=MNM YOUNUS, L=Unknown, ST=Unknown, C=US"
-
-      - name: Find Android build tools
-        id: build-tools
-        run: |
-          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          echo "path=$BUILD_TOOLS" >> "$GITHUB_OUTPUT"
- - name: Align APK
-  env:
-    BUILD_TOOLS: ${{ steps.build-tools.outputs.path }}
-  run: |
-    "$BUILD_TOOLS/zipalign" -f -p 4 \
-      app/build/outputs/apk/release/app-release.apk \
-      personal-file-scraper-aligned.apk
-      
-  - name: Sign APK
-        env:
-          BUILD_TOOLS: ${{ steps.build-tools.outputs.path }}
-        run: |
-          "$BUILD_TOOLS/apksigner" sign \
-            --ks release-keystore.jks \
-            --ks-pass pass:android \
-            --key-pass pass:android \
-            --ks-key-alias release \
-            --out personal-file-scraper.apk \
-            personal-file-scraper-aligned.apk
-            
-        - name: Verify APK
-        env:
-          BUILD_TOOLS: ${{ steps.build-tools.outputs.path }}
-        run: |
-          "$BUILD_TOOLS/apksigner" verify --verbose personal-file-scraper.apk
-          ls -lh personal-file-scraper.apk
+          cp app/build/outputs/apk/debug/app-debug.apk personal-file-scraper-debug.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('debug-{0}', github.run_number) }}
-          name: ${{ github.ref_type == 'tag' && github.ref_name || format('Debug Release {0}', github.run_number) }}
-          files: personal-file-scraper.apk
+          tag_name: debug-${{ github.run_number }}
+          name: Debug APK ${{ github.run_number }}
+          files: personal-file-scraper-debug.apk
           generate_release_notes: false
-          overwrite_files: true
