@@ -39,14 +39,6 @@ access — that's enforced below the app layer, not just a promise in this text.
   explicitly copied from the original (a fresh output stream doesn't inherit
   this on its own). Embedded metadata (EXIF, etc.) was already preserved
   because copying was always a raw byte copy with no re-encoding step.
-- **Not implemented, on purpose**: a notification-listener feature to capture
-  and store other apps' message content (referenced as "WAMR"-style) was
-  requested and intentionally left out. That requires Android's
-  `NotificationListenerService` permission, which exposes literally every
-  notification on the device system-wide, and the specific request matches a
-  well-known app category built around retaining messages the sender deleted
-  — which conflicts with this project's own no-spyware requirement below.
-
 ## Architecture
 
 - **MVVM** — one `ViewModel` per screen, exposing `StateFlow`s that Compose collects.
