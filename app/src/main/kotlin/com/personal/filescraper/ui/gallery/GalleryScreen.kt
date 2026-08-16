@@ -1,5 +1,7 @@
 package com.personal.filescraper.ui.gallery
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,6 +11,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,37 +28,69 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.personal.filescraper.data.model.FileType
 import com.personal.filescraper.util.FileUtils
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GalleryScreen(viewModel: GalleryViewModel) {
     val files by viewModel.uiState.collectAsStateWithLifecycle()
     var previewPath by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    if (files.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No archived files yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    // "Export all before deletion" - copies everything currently archived into a
+    // folder the user picks. Exported copies are permanent; they're no longer subject
+    // to the retention timer, only the internal archive is.
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val count = viewModel.exportAll(context, uri)
+                snackbarHostState.showSnackbar(
+                    if (count > 0) "Exported $count file(s)" else "Nothing to export"
+                )
+            }
         }
-        return
     }
 
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        items(files, key = { it.id }) { file ->
-            ArchivedFileCard(
-                file = file,
-                onClick = {
-                    if (file.fileType == FileType.IMAGE) {
-                        previewPath = file.archivedPath
-                    } else {
-                        FileUtils.openWithDefaultApp(context, file.archivedPath)
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Archive") },
+                actions = {
+                    IconButton(onClick = { exportLauncher.launch(null) }) {
+                        Icon(Icons.Default.FileDownload, contentDescription = "Export all before deletion")
                     }
                 }
             )
+        }
+    ) { padding ->
+        if (files.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Text("No archived files yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.padding(padding),
+                contentPadding = PaddingValues(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(files, key = { it.id }) { file ->
+                    ArchivedFileCard(
+                        file = file,
+                        onClick = {
+                            if (file.fileType == FileType.IMAGE) {
+                                previewPath = file.archivedPath
+                            } else {
+                                FileUtils.openWithDefaultApp(context, file.archivedPath)
+                            }
+                        }
+                    )
+                }
+            }
         }
     }
 

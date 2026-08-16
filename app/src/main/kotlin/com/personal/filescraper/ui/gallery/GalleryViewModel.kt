@@ -1,5 +1,7 @@
 package com.personal.filescraper.ui.gallery
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.personal.filescraper.data.model.FileType
@@ -21,7 +23,7 @@ data class ArchivedFileUi(
 )
 
 class GalleryViewModel(
-    repository: ArchiveRepository,
+    private val repository: ArchiveRepository,
     settingsRepository: SettingsRepository
 ) : ViewModel() {
 
@@ -50,6 +52,9 @@ class GalleryViewModel(
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    suspend fun exportAll(context: Context, destinationUri: Uri): Int =
+        repository.exportAll(context, destinationUri)
 
     companion object {
         private const val TICK_MILLIS = 30_000L

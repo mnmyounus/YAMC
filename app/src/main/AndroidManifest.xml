@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  No android.permission.INTERNET is declared anywhere in this file, intentionally.
+  Without it, the OS itself blocks this app from opening any network socket - it is
+  not just a policy choice, it's enforced at the kernel/UID level. Do not add it.
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 

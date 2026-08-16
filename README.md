@@ -5,7 +5,47 @@ DCIM, Pictures, Downloads, and every subfolder under `Android/media/`), copies
 new images/videos/documents into a private archive as soon as they appear, and
 auto-deletes archived copies after a configurable window (48h by default).
 Everything happens on-device — there is no server, no account, and no network
-call anywhere in this codebase.
+call anywhere in this codebase. There is no `android.permission.INTERNET` entry
+in the manifest at all, which means the OS itself refuses this app any socket
+access — that's enforced below the app layer, not just a promise in this text.
+
+## Changes after the first install
+
+- **APK size / distribution.** The first build was an unshrunk debug APK
+  (~59MB). `app/build.gradle.kts` now enables R8 code shrinking and resource
+  shrinking for the release build type, and `.github/workflows/release.yml`
+  publishes that shrunk release APK straight to this repo's **Releases** page
+  whenever you push a version tag (`git tag v1.0 && git push origin v1.0`) or
+  run the workflow manually. The debug workflow from before is still there for
+  quick test builds.
+- **Lag/crash while browsing folders.** Root cause: the folder picker was
+  listing directory contents synchronously on the UI thread on every tap —
+  real disk I/O blocking the main thread, which reads as lag or a freeze/crash
+  depending on the folder size. It now runs off the main thread with a loading
+  spinner. Separately, `RecursiveFileObserver` now catches per-directory
+  failures instead of letting one bad folder take the whole thing down, and
+  caps how many directories it watches per root so it can't exhaust the
+  system's inotify-watch limit (a real failure mode for recursively watching
+  something like a messaging app's media folder, which can have dozens of
+  subfolders on its own).
+- **Folder picker now shows every storage volume** (internal + SD card, where
+  present), not just the primary volume, so you can select anywhere on the
+  device.
+- **"Export all" button** on the Archive screen — copies everything currently
+  archived into a folder you pick, before the retention timer deletes it.
+  Exported copies are permanent copies; only the internal archive is subject
+  to cleanup.
+- **File metadata**: the archived copy's filesystem last-modified time is now
+  explicitly copied from the original (a fresh output stream doesn't inherit
+  this on its own). Embedded metadata (EXIF, etc.) was already preserved
+  because copying was always a raw byte copy with no re-encoding step.
+- **Not implemented, on purpose**: a notification-listener feature to capture
+  and store other apps' message content (referenced as "WAMR"-style) was
+  requested and intentionally left out. That requires Android's
+  `NotificationListenerService` permission, which exposes literally every
+  notification on the device system-wide, and the specific request matches a
+  well-known app category built around retaining messages the sender deleted
+  — which conflicts with this project's own no-spyware requirement below.
 
 ## Architecture
 
@@ -60,12 +100,19 @@ app/src/main/kotlin/com/personal/filescraper/
 
 ### Building without a desktop
 
-Since you're working from mobile: `.github/workflows/build-debug-apk.yml` is a
-ready-to-use GitHub Actions workflow. Push this project to a GitHub repo (the
-GitHub app or the mobile web editor both work for that), then either push to
-`main` or trigger it manually from the **Actions** tab. It builds a debug APK
-on GitHub's runners and attaches it to the run as a downloadable artifact — no
-desktop needed at any point.
+Since you're working from mobile, there are two GitHub Actions workflows —
+push this project to a GitHub repo (the GitHub app or the mobile web editor
+both work for that) and use whichever fits:
+
+- **`build-debug-apk.yml`** — push to `main`, or trigger manually from the
+  **Actions** tab. Builds an unshrunk debug APK fast, attached to the run as a
+  downloadable artifact. Good for quick test installs while iterating.
+- **`release.yml`** — push a version tag (`git tag v1.0 && git push origin v1.0`),
+  or trigger manually. Builds the shrunk release APK and publishes it to this
+  repo's **Releases** page as `personal-file-scraper.apk` — this is the small,
+  properly-shrunk build for actually installing day to day.
+
+Both build on GitHub's runners; no desktop needed at any point.
 
 ## Permissions, and why each is there
 

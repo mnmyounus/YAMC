@@ -1,7 +1,9 @@
 package com.personal.filescraper.data.repository
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
+import androidx.documentfile.provider.DocumentFile
 import com.personal.filescraper.data.db.AppDatabase
 import com.personal.filescraper.data.db.ArchivedFileEntity
 import com.personal.filescraper.data.db.WatchedFolderEntity
@@ -54,6 +56,10 @@ class ArchiveRepository(
                 sourceFile.inputStream().use { input ->
                     destFile.outputStream().use { output -> input.copyTo(output) }
                 }
+                // Raw byte copy already preserves embedded metadata (EXIF, etc.) since
+                // nothing re-encodes the file. This preserves the filesystem-level
+                // last-modified timestamp too, which a fresh output stream otherwise resets.
+                destFile.setLastModified(sourceFile.lastModified())
 
                 val entity = ArchivedFileEntity(
                     originalPath = sourceFile.absolutePath,
@@ -104,6 +110,35 @@ class ArchiveRepository(
             db.archivedFileDao().deleteById(entity.id)
         }
         expired.size
+    }
+
+    /**
+     * Copies every currently-archived file into a user-chosen folder (picked via the
+     * system folder picker), so files can be kept permanently instead of being caught
+     * by the retention cleanup. This only copies out - it never touches the internal
+     * archive or the cleanup timer, so anything not exported in time still expires
+     * on schedule as normal.
+     */
+    suspend fun exportAll(context: Context, destinationTreeUri: Uri): Int = withContext(Dispatchers.IO) {
+        val destTree = DocumentFile.fromTreeUri(context, destinationTreeUri) ?: return@withContext 0
+        val allFiles = db.archivedFileDao().observeAll().first()
+        var exported = 0
+        allFiles.forEach { entity ->
+            try {
+                val sourceFile = File(entity.archivedPath)
+                if (!sourceFile.exists()) return@forEach
+                if (destTree.findFile(entity.fileName) != null) return@forEach // already exported
+
+                val newDoc = destTree.createFile(entity.mimeType, entity.fileName) ?: return@forEach
+                context.contentResolver.openOutputStream(newDoc.uri)?.use { output ->
+                    sourceFile.inputStream().use { input -> input.copyTo(output) }
+                }
+                exported++
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to export ${entity.fileName}", e)
+            }
+        }
+        exported
     }
 
     companion object {

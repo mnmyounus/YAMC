@@ -4,6 +4,7 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.ServiceCompat
 import com.personal.filescraper.FileScraperApp
 import com.personal.filescraper.notification.NotificationHelper
@@ -53,21 +54,33 @@ class FileMonitorService : Service() {
 
         serviceScope.launch {
             val folders = container.archiveRepository.getWatchedFoldersOnce()
+            var watchedCount = 0
             folders.forEach { folder ->
-                val observer = RecursiveFileObserver(folder.path) { file ->
-                    serviceScope.launch { handleNewFile(file, folder.path) }
+                // One folder failing to watch (bad permissions, huge tree hitting the
+                // inotify cap, etc.) must never take the rest of monitoring down with it.
+                try {
+                    val observer = RecursiveFileObserver(folder.path) { file ->
+                        serviceScope.launch { handleNewFile(file, folder.path) }
+                    }
+                    observer.startWatching()
+                    observers.add(observer)
+                    watchedCount++
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to watch folder ${folder.path}", e)
                 }
-                observer.startWatching()
-                observers.add(observer)
             }
-            container.notificationHelper.updateMonitoringNotification(folders.size)
+            container.notificationHelper.updateMonitoringNotification(watchedCount)
         }
     }
 
     private suspend fun handleNewFile(file: File, sourceFolder: String) {
-        if (!file.exists() || !FileUtils.isSupportedType(file)) return
-        val archived = container.archiveRepository.archiveFile(file, sourceFolder) ?: return
-        container.notificationHelper.showFileArchivedNotification(archived.fileName)
+        try {
+            if (!file.exists() || !FileUtils.isSupportedType(file)) return
+            val archived = container.archiveRepository.archiveFile(file, sourceFolder) ?: return
+            container.notificationHelper.showFileArchivedNotification(archived.fileName)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to handle new file ${file.path}", e)
+        }
     }
 
     private fun teardownObservers() {
@@ -84,6 +97,7 @@ class FileMonitorService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        private const val TAG = "FileMonitorService"
         const val ACTION_STOP = "com.personal.filescraper.action.STOP"
         const val ACTION_REFRESH = "com.personal.filescraper.action.REFRESH"
     }

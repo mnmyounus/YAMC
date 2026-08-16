@@ -10,9 +10,15 @@ import java.io.File
  * [FileObserver] only watches a single directory, not its subtree, so this class
  * creates one child observer per directory and adds new ones on the fly whenever a
  * subdirectory is created. Files are reported on CLOSE_WRITE or MOVED_TO - never on
- * raw CREATE - because CREATE can fire before a file's bytes actually exist (many
- * camera and download apps create the file first and write its contents afterwards,
- * so acting on CREATE risks archiving an empty or partial file).
+ * raw CREATE - because CREATE can fire before a file's bytes actually exist.
+ *
+ * Two defensive limits keep one huge folder tree (e.g. a messaging app's media folder,
+ * which can easily have dozens of subfolders on its own) from destabilizing the app:
+ *  - MAX_DEPTH stops recursing past a sane nesting level.
+ *  - MAX_WATCHED_DIRS stops creating new inotify watches past a per-root cap, since the
+ *    OS caps how many watches a process can hold in total. Hitting either limit doesn't
+ *    lose files permanently - SyncWorker's periodic re-scan still covers anything past
+ *    the cap, just with some delay instead of instantly.
  */
 class RecursiveFileObserver(
     rootPath: String,
@@ -31,34 +37,58 @@ class RecursiveFileObserver(
             Log.w(TAG, "Not a directory, skipping: ${rootFile.absolutePath}")
             return
         }
-        watchRecursively(rootFile, depth = 0)
+        try {
+            watchRecursively(rootFile, depth = 0)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start watching ${rootFile.absolutePath}", e)
+        }
     }
 
     fun stopWatching() {
         active = false
-        observers.values.forEach { it.stopWatching() }
+        observers.values.forEach {
+            try {
+                it.stopWatching()
+            } catch (e: Exception) {
+                // Already torn down - nothing to do.
+            }
+        }
         observers.clear()
     }
 
     private fun watchRecursively(dir: File, depth: Int) {
-        if (depth > MAX_DEPTH || observers.containsKey(dir.absolutePath)) return
+        if (!active) return
+        if (depth > MAX_DEPTH) return
+        if (observers.size >= MAX_WATCHED_DIRS) return
+        if (observers.containsKey(dir.absolutePath)) return
 
-        val observer = object : FileObserver(dir, watchMask) {
-            override fun onEvent(event: Int, relativePath: String?) {
-                if (relativePath == null || !active) return
-                val child = File(dir, relativePath)
-                when (event and ALL_EVENTS) {
-                    CREATE -> if (child.isDirectory) watchRecursively(child, depth + 1)
-                    CLOSE_WRITE -> if (child.isFile) onFileReady(child)
-                    MOVED_TO -> {
-                        if (child.isFile) onFileReady(child)
-                        else if (child.isDirectory) watchRecursively(child, depth + 1)
+        try {
+            val observer = object : FileObserver(dir, watchMask) {
+                override fun onEvent(event: Int, relativePath: String?) {
+                    if (relativePath == null || !active) return
+                    try {
+                        val child = File(dir, relativePath)
+                        when (event and ALL_EVENTS) {
+                            CREATE -> if (child.isDirectory) watchRecursively(child, depth + 1)
+                            CLOSE_WRITE -> if (child.isFile) onFileReady(child)
+                            MOVED_TO -> {
+                                if (child.isFile) onFileReady(child)
+                                else if (child.isDirectory) watchRecursively(child, depth + 1)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error handling event in ${dir.absolutePath}", e)
                     }
                 }
             }
+            observer.startWatching()
+            observers[dir.absolutePath] = observer
+        } catch (e: Exception) {
+            // Most likely cause: the process-wide inotify watch limit was hit. Skip this
+            // one directory instead of crashing - SyncWorker still covers it periodically.
+            Log.w(TAG, "Could not watch ${dir.absolutePath}, skipping", e)
+            return
         }
-        observer.startWatching()
-        observers[dir.absolutePath] = observer
 
         dir.listFiles()?.forEach { child ->
             if (child.isDirectory) watchRecursively(child, depth + 1)
@@ -67,6 +97,7 @@ class RecursiveFileObserver(
 
     companion object {
         private const val TAG = "RecursiveFileObserver"
-        private const val MAX_DEPTH = 12
+        private const val MAX_DEPTH = 10
+        private const val MAX_WATCHED_DIRS = 500
     }
 }
