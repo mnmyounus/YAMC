@@ -9,6 +9,32 @@ call anywhere in this codebase. There is no `android.permission.INTERNET` entry
 in the manifest at all, which means the OS itself refuses this app any socket
 access — that's enforced below the app layer, not just a promise in this text.
 
+## Changes after CI + folder-management feedback
+
+- **Release workflow was actually broken.** It called a bare `gradle` command
+  with no Gradle Wrapper committed to the repo — that's non-standard and not
+  reliably available on the runner, which is almost certainly why it failed.
+  The project now includes a real, official Gradle Wrapper (`gradlew`,
+  `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar` — fetched directly from
+  the `v8.7.0` tag of `gradle/gradle` on GitHub, matching the project's
+  declared Gradle version), and both workflows now run `./gradlew` instead of
+  a bare `gradle` invocation, which is the pattern every current official
+  example uses. If it still fails after this, paste the exact step that
+  failed from the Actions log and I'll pin it down precisely.
+- **Found the real cause of "auto-selects all files and lags."** `SyncWorker`'s
+  reconciliation scan was archiving *every* pre-existing file in a folder the
+  first time it scanned it, not just new ones — because it only checked "is
+  this in the archive DB yet," not "did this appear after I started watching
+  this folder." For a folder like DCIM with years of photos, that's a huge
+  one-time burst of copying. It now only considers files modified after the
+  folder was added to the watch list (`addedAtMillis`), so "new" actually
+  means new.
+- **Folders can now be swiped left to remove them — including default ones.**
+  Previously, default folders (DCIM, Pictures, Downloads, and every
+  auto-added `Android/media/` subfolder) had no way to be removed from the UI
+  at all, which meant there was no way to prune the list down if one of those
+  was the source of lag. Tap the pencil icon on a folder to rename it.
+
 ## Changes after the first install
 
 - **APK size / distribution.** The first build was an unshrunk debug APK
@@ -39,6 +65,14 @@ access — that's enforced below the app layer, not just a promise in this text.
   explicitly copied from the original (a fresh output stream doesn't inherit
   this on its own). Embedded metadata (EXIF, etc.) was already preserved
   because copying was always a raw byte copy with no re-encoding step.
+- **Not implemented, on purpose**: a notification-listener feature to capture
+  and store other apps' message content (referenced as "WAMR"-style) was
+  requested and intentionally left out. That requires Android's
+  `NotificationListenerService` permission, which exposes literally every
+  notification on the device system-wide, and the specific request matches a
+  well-known app category built around retaining messages the sender deleted
+  — which conflicts with this project's own no-spyware requirement below.
+
 ## Architecture
 
 - **MVVM** — one `ViewModel` per screen, exposing `StateFlow`s that Compose collects.

@@ -43,30 +43,19 @@ object FileUtils {
         return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
     }
 
-    /** Returns folders that CAN be monitored. Nothing is auto-selected anymore.
-     *  User should pick from this list and save to prefs */
-    fun availableFolders(): List<Pair<String, String>> {
-        val list = mutableListOf<Pair<String, String>>()
-
-        // System folders
-        list.add(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM).absolutePath to "DCIM")
-        list.add(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath to "Pictures")
-        list.add(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath to "Downloads")
-
-        // App-specific media folders
+    /** Default folders monitored out of the box: DCIM, Pictures, Downloads, and every
+     * app-specific subfolder under Android/media/ (e.g. media saved by messaging apps). */
+    fun defaultFolders(): List<Pair<String, String>> {
+        val list = mutableListOf(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM).absolutePath to "DCIM",
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath to "Pictures",
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath to "Downloads"
+        )
         val mediaDir = File(Environment.getExternalStorageDirectory(), "Android/media")
-        if (mediaDir.exists() && mediaDir.canRead()) {
-            mediaDir.listFiles()?.filter { it.isDirectory }?.forEach { sub ->
-                list.add(sub.absolutePath to sub.name)
-            }
+        mediaDir.listFiles()?.filter { it.isDirectory }?.forEach { sub ->
+            list.add(sub.absolutePath to sub.name)
         }
         return list
-    }
-
-    fun getAppArchiveDir(context: Context): File {
-        val dir = File(context.getExternalFilesDir(null), "Archive")
-        if (!dir.exists()) dir.mkdirs()
-        return dir
     }
 
     fun openWithDefaultApp(context: Context, path: String) {

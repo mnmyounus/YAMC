@@ -40,6 +40,9 @@ class ArchiveRepository(
 
     suspend fun removeWatchedFolder(path: String) = db.watchedFolderDao().deleteByPath(path)
 
+    suspend fun renameWatchedFolder(path: String, newDisplayName: String) =
+        db.watchedFolderDao().updateDisplayName(path, newDisplayName)
+
     fun observeArchivedFiles(): Flow<List<ArchivedFileEntity>> = db.archivedFileDao().observeAll()
 
     suspend fun isAlreadyArchived(originalPath: String): Boolean =

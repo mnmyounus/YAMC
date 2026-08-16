@@ -29,4 +29,7 @@ interface WatchedFolderDao {
 
     @Query("DELETE FROM watched_folders WHERE path = :path")
     suspend fun deleteByPath(path: String)
+
+    @Query("UPDATE watched_folders SET displayName = :newName WHERE path = :path")
+    suspend fun updateDisplayName(path: String, newName: String)
 }

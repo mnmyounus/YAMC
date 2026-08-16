@@ -12,12 +12,15 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Safety-net reconciliation. FileObserver only reports events while the monitoring
- * service's process is alive, and Android can kill that process - Doze, OEM battery
- * managers, and (on Android 14) the background time limit on dataSync foreground
- * services all do this. This worker periodically re-scans watched folders and
- * archives anything that was missed, so monitoring stays eventually-consistent even
- * after the service itself has been killed.
+ * Safety-net reconciliation: FileObserver only reports events while the monitoring
+ * service's process is alive, and Android can kill that process. This worker
+ * periodically re-scans watched folders and archives anything that was missed.
+ *
+ * Important: this only considers files modified *after* each folder started being
+ * watched (folder.addedAtMillis). Without that filter, the first scan of a folder
+ * like DCIM - which can hold years of existing photos - would bulk-import the whole
+ * thing in one pass, which is exactly what "auto-archives everything and lags" looks
+ * like. "New" means new since monitoring started, not everything that already existed.
  */
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -34,7 +37,12 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             if (root.exists()) {
                 root.walkTopDown()
                     .maxDepth(SCAN_MAX_DEPTH)
-                    .filter { it.isFile && FileUtils.isSupportedType(it) && !FileUtils.isLikelyTemporary(it) }
+                    .filter {
+                        it.isFile &&
+                            it.lastModified() >= folder.addedAtMillis &&
+                            FileUtils.isSupportedType(it) &&
+                            !FileUtils.isLikelyTemporary(it)
+                    }
                     .forEach { file ->
                         if (!repo.isAlreadyArchived(file.absolutePath)) {
                             if (repo.archiveFile(file, folder.path) != null) newCount++
