@@ -53,11 +53,13 @@ class FileMonitorService : Service() {
         )
 
         serviceScope.launch {
+            // Pick up any newly-appeared default folder (e.g. WhatsApp's media folder,
+            // if it didn't exist yet at first install) before starting to watch.
+            container.archiveRepository.syncDefaultFolders()
+
             val folders = container.archiveRepository.getWatchedFoldersOnce()
             var watchedCount = 0
             folders.forEach { folder ->
-                // One folder failing to watch (bad permissions, huge tree hitting the
-                // inotify cap, etc.) must never take the rest of monitoring down with it.
                 try {
                     val observer = RecursiveFileObserver(folder.path) { file ->
                         serviceScope.launch { handleNewFile(file, folder.path) }
