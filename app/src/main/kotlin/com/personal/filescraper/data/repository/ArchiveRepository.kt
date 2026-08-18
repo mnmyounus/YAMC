@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.personal.filescraper.data.db.AppDatabase
 import com.personal.filescraper.data.db.ArchivedFileEntity
+import com.personal.filescraper.data.db.DismissedDefaultFolderEntity
 import com.personal.filescraper.data.db.WatchedFolderEntity
 import com.personal.filescraper.util.FileUtils
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +20,6 @@ class ArchiveRepository(
     private val db: AppDatabase,
     private val settingsRepository: SettingsRepository
 ) {
-    // Resolves to /Android/data/com.personal.filescraper/files/Archive/
     private val archiveDir: File by lazy {
         File(context.getExternalFilesDir(null), "Archive").apply { mkdirs() }
     }
@@ -43,7 +43,24 @@ class ArchiveRepository(
     suspend fun renameWatchedFolder(path: String, newDisplayName: String) =
         db.watchedFolderDao().updateDisplayName(path, newDisplayName)
 
-    fun observeArchivedFiles(): Flow<List<ArchivedFileEntity>> = db.archivedFileDao().observeAll()
+    suspend fun dismissDefaultFolder(path: String) =
+        db.dismissedDefaultFolderDao().insert(DismissedDefaultFolderEntity(path))
+
+}
+
+}
+
+    suspend fun syncDefaultFolders() {
+        val existingPaths = getWatchedFoldersOnce().map { it.path }.toSet()
+        val dismissedPaths = db.dismissedDefaultFolderDao().getAllPaths().toSet()
+        FileUtils.defaultFolders().forEach { (path, name) ->
+            if (path !in existingPaths && path !in dismissedPaths) {
+                addWatchedFolder(path, name, isDefault = true)
+            }
+        }
+    }
+
+    fun observeArchivedFiles(): Flow<List<ArchivedFileEntity>> = db.rchivedFileDao().observeAll()
 
     suspend fun isAlreadyArchived(originalPath: String): Boolean =
         db.archivedFileDao().existsByOriginalPath(originalPath) > 0
@@ -59,9 +76,6 @@ class ArchiveRepository(
                 sourceFile.inputStream().use { input ->
                     destFile.outputStream().use { output -> input.copyTo(output) }
                 }
-                // Raw byte copy already preserves embedded metadata (EXIF, etc.) since
-                // nothing re-encodes the file. This preserves the filesystem-level
-                // last-modified timestamp too, which a fresh output stream otherwise resets.
                 destFile.setLastModified(sourceFile.lastModified())
 
                 val entity = ArchivedFileEntity(
@@ -76,7 +90,6 @@ class ArchiveRepository(
                 )
                 val id = db.archivedFileDao().insert(entity)
                 if (id == -1L) {
-                    // Lost a race with another detection path (FileObserver vs SyncWorker).
                     destFile.delete()
                     return@withContext null
                 }
@@ -115,13 +128,6 @@ class ArchiveRepository(
         expired.size
     }
 
-    /**
-     * Copies every currently-archived file into a user-chosen folder (picked via the
-     * system folder picker), so files can be kept permanently instead of being caught
-     * by the retention cleanup. This only copies out - it never touches the internal
-     * archive or the cleanup timer, so anything not exported in time still expires
-     * on schedule as normal.
-     */
     suspend fun exportAll(context: Context, destinationTreeUri: Uri): Int = withContext(Dispatchers.IO) {
         val destTree = DocumentFile.fromTreeUri(context, destinationTreeUri) ?: return@withContext 0
         val allFiles = db.archivedFileDao().observeAll().first()
@@ -130,7 +136,7 @@ class ArchiveRepository(
             try {
                 val sourceFile = File(entity.archivedPath)
                 if (!sourceFile.exists()) return@forEach
-                if (destTree.findFile(entity.fileName) != null) return@forEach // already exported
+                if (destTree.findFile(entity.fileName) != null) return@forEach
 
                 val newDoc = destTree.createFile(entity.mimeType, entity.fileName) ?: return@forEach
                 context.contentResolver.openOutputStream(newDoc.uri)?.use { output ->
