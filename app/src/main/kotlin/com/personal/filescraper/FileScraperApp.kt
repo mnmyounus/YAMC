@@ -2,7 +2,6 @@ package com.personal.filescraper
 
 import android.app.Application
 import com.personal.filescraper.di.AppContainer
-import com.personal.filescraper.util.FileUtils
 import com.personal.filescraper.worker.WorkerScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,20 +15,12 @@ class FileScraperApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        // Cleanup runs on its own schedule regardless of whether monitoring is
-        // currently on - there can still be previously-archived files to expire.
         WorkerScheduler.scheduleCleanup(this)
-        seedDefaultFoldersIfNeeded()
-    }
-
-    private fun seedDefaultFoldersIfNeeded() {
+        // Runs on every launch, not just the first - see
+        // ArchiveRepository.syncDefaultFolders for why a one-time-only seed misses
+        // folders (like WhatsApp's) that didn't exist yet at first install.
         CoroutineScope(Dispatchers.IO).launch {
-            val existing = container.archiveRepository.getWatchedFoldersOnce()
-            if (existing.isEmpty()) {
-                FileUtils.defaultFolders().forEach { (path, name) ->
-                    container.archiveRepository.addWatchedFolder(path, name, isDefault = true)
-                }
-            }
+            container.archiveRepository.syncDefaultFolders()
         }
     }
 }
