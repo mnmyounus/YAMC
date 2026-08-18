@@ -46,10 +46,14 @@ class ArchiveRepository(
     suspend fun dismissDefaultFolder(path: String) =
         db.dismissedDefaultFolderDao().insert(DismissedDefaultFolderEntity(path))
 
-}
-
-}
-
+    /**
+     * Adds any default-folder candidate (DCIM, Android/media/* subfolders, WhatsApp's
+     * legacy path, etc.) that isn't already watched and wasn't explicitly dismissed.
+     * Run on every app start, on every SyncWorker cycle, and whenever monitoring starts
+     * - not just once - so a folder that didn't exist yet at first install (e.g.
+     * WhatsApp's media folder, if WhatsApp was installed/used after this app was) still
+     * gets picked up once it does exist.
+     */
     suspend fun syncDefaultFolders() {
         val existingPaths = getWatchedFoldersOnce().map { it.path }.toSet()
         val dismissedPaths = db.dismissedDefaultFolderDao().getAllPaths().toSet()
@@ -60,7 +64,7 @@ class ArchiveRepository(
         }
     }
 
-    fun observeArchivedFiles(): Flow<List<ArchivedFileEntity>> = db.rchivedFileDao().observeAll()
+    fun observeArchivedFiles(): Flow<List<ArchivedFileEntity>> = db.archivedFileDao().observeAll()
 
     suspend fun isAlreadyArchived(originalPath: String): Boolean =
         db.archivedFileDao().existsByOriginalPath(originalPath) > 0
