@@ -43,18 +43,31 @@ object FileUtils {
         return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
     }
 
-    /** Default folders monitored out of the box: DCIM, Pictures, Downloads, and every
-     * app-specific subfolder under Android/media/ (e.g. media saved by messaging apps). */
+    /** Default folders monitored out of the box: DCIM, Pictures, Downloads, every
+     * app-specific subfolder under Android/media/, and (if present) WhatsApp's legacy
+     * top-level media folder - see the comment below for why that last one matters. */
     fun defaultFolders(): List<Pair<String, String>> {
+        val root = Environment.getExternalStorageDirectory()
         val list = mutableListOf(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM).absolutePath to "DCIM",
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath to "Pictures",
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath to "Downloads"
         )
-        val mediaDir = File(Environment.getExternalStorageDirectory(), "Android/media")
+
+        val mediaDir = File(root, "Android/media")
         mediaDir.listFiles()?.filter { it.isDirectory }?.forEach { sub ->
             list.add(sub.absolutePath to sub.name)
         }
+
+        // WhatsApp installs from before its scoped-storage media migration keep their
+        // media in this top-level folder instead of Android/media/com.whatsapp/. On
+        // those installs, WhatsApp images were never being watched at all, because this
+        // path isn't under Android/media/ and wasn't in the default list before.
+        val legacyWhatsAppMedia = File(root, "WhatsApp/Media")
+        if (legacyWhatsAppMedia.isDirectory) {
+            list.add(legacyWhatsAppMedia.absolutePath to "WhatsApp (legacy path)")
+        }
+
         return list
     }
 
