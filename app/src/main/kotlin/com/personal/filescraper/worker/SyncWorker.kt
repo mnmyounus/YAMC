@@ -11,24 +11,18 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/**
- * Safety-net reconciliation: FileObserver only reports events while the monitoring
- * service's process is alive, and Android can kill that process. This worker
- * periodically re-scans watched folders and archives anything that was missed.
- *
- * Important: this only considers files modified *after* each folder started being
- * watched (folder.addedAtMillis). Without that filter, the first scan of a folder
- * like DCIM - which can hold years of existing photos - would bulk-import the whole
- * thing in one pass, which is exactly what "auto-archives everything and lags" looks
- * like. "New" means new since monitoring started, not everything that already existed.
- */
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val container = (applicationContext as FileScraperApp).container
+        val repo = container.archiveRepository
+
+        // Keeps the default-folder list current even if the app process never
+        // restarts (e.g. it's just sitting alive in the background the whole time).
+        repo.syncDefaultFolders()
+
         val monitoringEnabled = container.settingsRepository.monitoringEnabled.first()
         if (!monitoringEnabled) return@withContext Result.success()
 
-        val repo = container.archiveRepository
         val folders = repo.getWatchedFoldersOnce()
         var newCount = 0
 
