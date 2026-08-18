@@ -14,10 +14,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -37,16 +40,16 @@ fun DirectoryBrowserDialog(
     var currentDir by remember { mutableStateOf(roots.first().directory) }
     var entries by remember { mutableStateOf<List<File>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    // Off by default so ordinary browsing stays uncluttered - toggle on to dig
+    // into dot-prefixed folders (e.g. hunting for an old .git/project folder).
+    var showHidden by remember { mutableStateOf(false) }
 
-    // Listing a directory is real disk I/O. Doing it synchronously inside a Composable
-    // (as this used to) blocks the UI thread on every tap - that was the cause of the
-    // reported lag/freeze while browsing. This runs it on a background dispatcher instead.
-    LaunchedEffect(currentDir) {
+    LaunchedEffect(currentDir, showHidden) {
         isLoading = true
         entries = withContext(Dispatchers.IO) {
             try {
                 currentDir.listFiles()
-                    ?.filter { it.isDirectory && !it.name.startsWith(".") }
+                    ?.filter { it.isDirectory && (showHidden || !it.name.startsWith(".")) }
                     ?.sortedBy { it.name.lowercase() }
                     ?: emptyList()
             } catch (e: Exception) {
@@ -59,12 +62,26 @@ fun DirectoryBrowserDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
             Column(Modifier.padding(16.dp)) {
-                Text(currentDir.absolutePath, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        currentDir.absolutePath,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { showHidden = !showHidden }) {
+                        Icon(
+                            if (showHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = if (showHidden) "Hide hidden folders" else "Show hidden folders"
+                        )
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
 
-                // Only shown when there's more than one volume (e.g. an SD card) to jump
-                // between - this is what makes browsing reach the whole device, not just
-                // internal storage, similar to a general-purpose file manager.
                 if (roots.size > 1) {
                     Row(
                         Modifier.fillMaxWidth().padding(bottom = 8.dp),
@@ -94,8 +111,14 @@ fun DirectoryBrowserDialog(
                         )
                         else -> LazyColumn {
                             items(entries, key = { it.absolutePath }) { dir ->
+                                val isHidden = dir.name.startsWith(".")
                                 ListItem(
-                                    headlineContent = { Text(dir.name) },
+                                    headlineContent = {
+                                        Text(
+                                            dir.name,
+                                            color = if (isHidden) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified
+                                        )
+                                    },
                                     leadingContent = { Icon(Icons.Default.Folder, contentDescription = null) },
                                     modifier = Modifier.clickable { currentDir = dir }
                                 )
@@ -116,8 +139,6 @@ fun DirectoryBrowserDialog(
 
 private fun listStorageRoots(context: Context): List<StorageRoot> {
     val roots = mutableListOf(StorageRoot("Internal Storage", Environment.getExternalStorageDirectory()))
-    // StorageVolume.directory (the public, non-reflection way to get a real path for
-    // secondary volumes like an SD card) only exists from API 30 onward.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         try {
             val storageManager = context.getSystemService(StorageManager::class.java)
