@@ -1,13 +1,20 @@
 name: Release APK
 
-# Publishes a shrunk, installable release APK to this repo's Releases page.
-# Trigger by pushing a version tag (e.g. `git tag v1.0 && git push origin v1.0`)
-# or by running this workflow manually from the Actions tab.
+# Two ways to trigger a release:
+#  1. Push a version tag:  git tag v1.0 && git push origin v1.0
+#  2. Run manually from the Actions tab and type a version when prompted -
+#     this creates the tag and release together, no local git tagging needed
+#     (this is the mobile-friendly path: GitHub's web UI/app can trigger this).
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. v1.1)'
+        required: true
+        default: 'v1.0'
 
 permissions:
   contents: write
@@ -19,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -40,6 +47,7 @@ jobs:
         run: cp app/build/outputs/apk/release/app-release.apk personal-file-scraper.apk
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
           files: personal-file-scraper.apk
