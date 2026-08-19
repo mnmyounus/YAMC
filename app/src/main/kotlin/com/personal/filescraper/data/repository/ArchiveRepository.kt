@@ -47,7 +47,7 @@ class ArchiveRepository(
         db.dismissedDefaultFolderDao().insert(DismissedDefaultFolderEntity(path))
 
     /**
-     * Adds any default-folder candidate (DCIM, Android/media/* subfolders, WhatsApp's
+     * Adds any default-folder candidate (DCIM, Android/media subfolders, WhatsApp's
      * legacy path, etc.) that isn't already watched and wasn't explicitly dismissed.
      * Run on every app start, on every SyncWorker cycle, and whenever monitoring starts
      * - not just once - so a folder that didn't exist yet at first install (e.g.
