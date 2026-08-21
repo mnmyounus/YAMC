@@ -19,7 +19,10 @@ object FileUtils {
     private val DOCUMENT_EXTENSIONS = setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "rtf")
 
     fun classify(file: File): FileType {
-        val ext = file.extension.lowercase()
+    val ext = file.extension.lowercase()
+    val path = file.absolutePath
+    
+    if (path.contains("WhatsApp/.Statuses") && ext == "tmp") return FileType.IMAGE
         return when {
             ext in IMAGE_EXTENSIONS -> FileType.IMAGE
             ext in VIDEO_EXTENSIONS -> FileType.VIDEO
@@ -32,12 +35,17 @@ object FileUtils {
     fun isSupportedType(file: File): Boolean = classify(file) != FileType.OTHER
 
     fun isLikelyTemporary(file: File): Boolean {
-        val name = file.name
-        return name.startsWith(".") ||
-            name.endsWith(".tmp") ||
-            name.endsWith(".crdownload") ||
-            name.endsWith(".part") ||
-            name.endsWith(".partial")
+    val name = file.name
+    val path = file.absolutePath
+    val isWaStatus = path.contains("WhatsApp/.Statuses")
+
+    return !isWaStatus && (
+        name.startsWith(".") ||
+        name.endsWith(".tmp") ||
+        name.endsWith(".crdownload") ||
+        name.endsWith(".part") ||
+        name.endsWith(".partial")
+    )
     }
 
     fun mimeTypeFor(file: File): String {
@@ -49,30 +57,44 @@ object FileUtils {
      * app-specific subfolder under Android/media/, and (if present) WhatsApp's legacy
      * top-level media folder - see the comment below for why that last one matters. */
     fun defaultFolders(): List<Pair<String, String>> {
-        val root = Environment.getExternalStorageDirectory()
-        val list = mutableListOf(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM).absolutePath to "DCIM",
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath to "Pictures",
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath to "Downloads"
-        )
+    val root = Environment.getExternalStorageDirectory()
+    val list = mutableListOf(
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM).absolutePath to "DCIM",
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath to "Pictures",
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath to "Downloads",
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC).absolutePath to "Music" // add this too
+    )
 
-        val mediaDir = File(root, "Android/media")
-        mediaDir.listFiles()?.filter { it.isDirectory }?.forEach { sub ->
-            list.add(sub.absolutePath to sub.name)
-        }
+    // === PASTE THESE 4 BLOCKS HERE ===
+    // WhatsApp Status folders for View Once
+    val waStatuses = File(root, "Android/media/com.whatsapp/WhatsApp Media/.Statuses")
+    if (waStatuses.isDirectory) list.add(waStatuses.absolutePath to "WhatsApp Status")
 
-        // WhatsApp installs from before its scoped-storage media migration keep their
-        // media in this top-level folder instead of Android/media/com.whatsapp/. On
-        // those installs, WhatsApp images were never being watched at all, because this
-        // path isn't under Android/media/ and wasn't in the default list before.
-        val legacyWhatsAppMedia = File(root, "WhatsApp/Media")
-        if (legacyWhatsAppMedia.isDirectory) {
-            list.add(legacyWhatsAppMedia.absolutePath to "WhatsApp (legacy path)")
-        }
+    val waStatusesTmp = File(root, "Android/media/com.whatsapp/WhatsApp Media/.Statuses/.tmp")
+    if (waStatusesTmp.isDirectory) list.add(waStatusesTmp.absolutePath to "WhatsApp Status TMP")
 
-        return list
+    // WhatsApp Audio folders
+    val waAudio = File(root, "Android/media/com.whatsapp/WhatsApp Media/WhatsApp Audio")
+    if (waAudio.isDirectory) list.add(waAudio.absolutePath to "WhatsApp Audio")
+    
+    val waPtt = File(root, "Android/media/com.whatsapp/WhatsApp Media/WhatsApp Ptt")
+    if (waPtt.isDirectory) list.add(waPtt.absolutePath to "WhatsApp Voice Notes")
+    // ===================================
+
+    val mediaDir = File(root, "Android/media")
+    mediaDir.listFiles()?.filter { it.isDirectory }?.forEach { sub ->
+        list.add(sub.absolutePath to sub.name)
     }
 
+    val legacyWhatsAppMedia = File(root, "WhatsApp/Media")
+    if (legacyWhatsAppMedia.isDirectory) {
+        list.add(legacyWhatsAppMedia.absolutePath to "WhatsApp (legacy path)")
+    }
+
+    return list
+}
+
+        
     fun openWithDefaultApp(context: Context, path: String) {
         try {
             val file = File(path)
