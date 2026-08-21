@@ -15,6 +15,7 @@ object FileUtils {
 
     private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp")
     private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "mov", "avi", "3gp", "webm", "m4v")
+    private val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "wav", "ogg", "opus", "aac", "flac", "wma", "amr")
     private val DOCUMENT_EXTENSIONS = setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "rtf")
 
     fun classify(file: File): FileType {
@@ -22,6 +23,7 @@ object FileUtils {
         return when {
             ext in IMAGE_EXTENSIONS -> FileType.IMAGE
             ext in VIDEO_EXTENSIONS -> FileType.VIDEO
+            ext in AUDIO_EXTENSIONS -> FileType.AUDIO
             ext in DOCUMENT_EXTENSIONS -> FileType.DOCUMENT
             else -> FileType.OTHER
         }
