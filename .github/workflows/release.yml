@@ -1,10 +1,5 @@
 name: Release APK
 
-# Two ways to trigger a release:
-#  1. Push a version tag:  git tag v1.0 && git push origin v1.0
-#  2. Run manually from the Actions tab and type a version when prompted -
-#     this creates the tag and release together, no local git tagging needed
-#     (this is the mobile-friendly path: GitHub's web UI/app can trigger this).
 on:
   push:
     tags:
@@ -32,7 +27,7 @@ jobs:
           java-version: '17'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v2
+        uses: android-actions/setup-android@v3
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -47,7 +42,7 @@ jobs:
         run: cp app/build/outputs/apk/release/app-release.apk personal-file-scraper.apk
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
           files: personal-file-scraper.apk
