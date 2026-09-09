@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.personal.filescraper"
-        minSdk = 29
+        minSdk = 27
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
