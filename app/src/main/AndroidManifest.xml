@@ -17,8 +17,12 @@
         android:maxSdkVersion="28" />
 
     <!-- Android 13+ granular media permissions (fallback path if All Files Access is denied) -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_IMAGES"
+        android:maxSdkVersion="999" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_VIDEO"
+        android:maxSdkVersion="999" />
 
     <!-- Android 11+ "All files access" - needed to reach folders like
          Android/media/<package>/ and to use FileObserver on raw filesystem paths. -->
@@ -27,8 +31,12 @@
         tools:ignore="ScopedStorage" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+        android:maxSdkVersion="999" />
+    <uses-permission
+        android:name="android.permission.POST_NOTIFICATIONS"
+        android:maxSdkVersion="999" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
