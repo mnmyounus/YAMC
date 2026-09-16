@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.personal.filescraper.ui.gallery
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -8,10 +10,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,26 +36,27 @@ import coil.compose.AsyncImage
 import com.personal.filescraper.data.model.FileType
 import com.personal.filescraper.util.FileUtils
 import kotlinx.coroutines.launch
+import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GalleryScreen(viewModel: GalleryViewModel) {
     val files by viewModel.uiState.collectAsStateWithLifecycle()
     var previewPath by remember { mutableStateOf<String?>(null) }
+    var videoPath by remember { mutableStateOf<String?>(null) }
+    var pdfPath by remember { mutableStateOf<String?>(null) }
+    var textPath by remember { mutableStateOf<String?>(null) }
+    var renameTarget by remember { mutableStateOf<ArchivedFileUi?>(null) }
+    var deleteTarget by remember { mutableStateOf<ArchivedFileUi?>(null) }
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // "Export all before deletion" - copies everything currently archived into a
-    // folder the user picks. Exported copies are permanent; they're no longer subject
-    // to the retention timer, only the internal archive is.
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             scope.launch {
                 val count = viewModel.exportAll(context, uri)
-                snackbarHostState.showSnackbar(
-                    if (count > 0) "Exported $count file(s)" else "Nothing to export"
-                )
+                snackbarHostState.showSnackbar(if (count > 0) "Exported $count file(s)" else "Nothing to export")
             }
         }
     }
@@ -81,27 +89,73 @@ fun GalleryScreen(viewModel: GalleryViewModel) {
                 items(files, key = { it.id }) { file ->
                     ArchivedFileCard(
                         file = file,
-                        onClick = {
-                            if (file.fileType == FileType.IMAGE) {
-                                previewPath = file.archivedPath
-                            } else {
-                                FileUtils.openWithDefaultApp(context, file.archivedPath)
+                        onOpen = {
+                            val f = File(file.archivedPath)
+                            when {
+                                file.fileType == FileType.IMAGE -> previewPath = file.archivedPath
+                                file.fileType == FileType.VIDEO -> videoPath = file.archivedPath
+                                FileUtils.isPdf(f) -> pdfPath = file.archivedPath
+                                FileUtils.isPlainText(f) -> textPath = file.archivedPath
+                                else -> FileUtils.openWithDefaultApp(context, file.archivedPath)
                             }
-                        }
+                        },
+                        onRename = { renameTarget = file },
+                        onDelete = { deleteTarget = file },
+                        onShare = { FileUtils.shareFile(context, file.archivedPath) }
                     )
                 }
             }
         }
     }
 
-    previewPath?.let { path ->
-        ImagePreviewDialog(path = path, onDismiss = { previewPath = null })
+    previewPath?.let { path -> ImagePreviewDialog(path = path, onDismiss = { previewPath = null }) }
+    videoPath?.let { path -> VideoPlayerDialog(path = path, onDismiss = { videoPath = null }) }
+    pdfPath?.let { path -> PdfViewerDialog(path = path, onDismiss = { pdfPath = null }) }
+    textPath?.let { path -> TextViewerDialog(path = path, onDismiss = { textPath = null }) }
+
+    renameTarget?.let { file ->
+        RenameFileDialog(
+            currentName = file.fileName,
+            onDismiss = { renameTarget = null },
+            onConfirm = { newName ->
+                scope.launch {
+                    val ok = viewModel.renameFile(file.id, newName)
+                    if (!ok) snackbarHostState.showSnackbar("Couldn't rename - a file with that name already exists")
+                    renameTarget = null
+                }
+            }
+        )
+    }
+
+    deleteTarget?.let { file ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Delete this file?") },
+            text = { Text("\"${file.fileName}\" will be permanently deleted now, ahead of its normal schedule.") },
+            confirmButton = {
+                TextButton(
+                    onClick = { scope.launch { viewModel.deleteFile(file.id); deleteTarget = null } },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) { Text("Cancel") }
+            }
+        )
     }
 }
 
 @Composable
-private fun ArchivedFileCard(file: ArchivedFileUi, onClick: () -> Unit) {
-    Card(modifier = Modifier.clickable(onClick = onClick)) {
+private fun ArchivedFileCard(
+    file: ArchivedFileUi,
+    onOpen: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+    onShare: () -> Unit
+) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    Card(modifier = Modifier.clickable(onClick = onOpen)) {
         Column {
             Box(
                 modifier = Modifier.fillMaxWidth().height(120.dp).background(MaterialTheme.colorScheme.surfaceVariant),
@@ -120,6 +174,33 @@ private fun ArchivedFileCard(file: ArchivedFileUi, onClick: () -> Unit) {
                         contentDescription = null,
                         modifier = Modifier.size(40.dp)
                     )
+                }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                ) {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = Color.White)
+                    }
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Rename") },
+                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                            onClick = { showMenu = false; onRename() }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Share") },
+                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                            onClick = { showMenu = false; onShare() }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Delete") },
+                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                            onClick = { showMenu = false; onDelete() }
+                        )
+                    }
                 }
             }
             Column(Modifier.padding(8.dp)) {
@@ -150,6 +231,26 @@ private fun ImagePreviewDialog(path: String, onDismiss: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun RenameFileDialog(
+    currentName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(currentName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename file") },
+        text = { OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true) },
+        confirmButton = {
+            TextButton(onClick = { if (text.isNotBlank()) onConfirm(text) }) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 private fun formatRemaining(millis: Long): String {

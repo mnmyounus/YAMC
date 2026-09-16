@@ -9,6 +9,28 @@ call anywhere in this codebase. There is no `android.permission.INTERNET` entry
 in the manifest at all, which means the OS itself refuses this app any socket
 access — that's enforced below the app layer, not just a promise in this text.
 
+## Folder browser: hidden folders
+
+The "add folder" browser now has a toggle (the eye icon, top-right of the
+dialog) to show dot-prefixed folders. Off by default so normal browsing stays
+uncluttered; switch it on when you need to dig into a hidden folder (e.g.
+recovering an old project directory). File: `ui/components/DirectoryBrowserDialog.kt`.
+
+## Changes after the second CI failure
+
+- **"GitHub Releases requires a tag."** `workflow_dispatch` (the manual "Run
+  workflow" button) was allowed as a trigger, but nothing gave the release
+  action a tag to attach to unless you'd already pushed one — so the obvious,
+  mobile-friendly button was guaranteed to fail. `workflow_dispatch` now
+  prompts for a version when you run it manually, and that gets passed
+  through as `tag_name`, which creates the tag and release together in one
+  step. Pushing a `v*` tag the command-line way still works exactly as
+  before.
+- Also upgraded `softprops/action-gh-release` from `v2` to `v3` - `v2.6.2` is
+  its final, unmaintained release and runs on the Node 20 runtime GitHub is
+  deprecating (that's what the warning in your log was about); `v3` runs on
+  Node 24.
+
 ## Changes after CI + folder-management feedback
 
 - **Release workflow was actually broken.** It called a bare `gradle` command

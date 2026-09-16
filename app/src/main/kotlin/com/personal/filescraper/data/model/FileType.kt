@@ -1,5 +1,5 @@
 package com.personal.filescraper.data.model
 
 enum class FileType {
-    IMAGE, VIDEO, DOCUMENT, AUDIO, OTHER
+    IMAGE, VIDEO, DOCUMENT, OTHER
 }

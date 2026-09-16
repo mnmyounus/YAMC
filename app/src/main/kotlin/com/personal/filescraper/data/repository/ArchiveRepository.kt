@@ -46,14 +46,6 @@ class ArchiveRepository(
     suspend fun dismissDefaultFolder(path: String) =
         db.dismissedDefaultFolderDao().insert(DismissedDefaultFolderEntity(path))
 
-    /**
-     * Adds any default-folder candidate (DCIM, Android/media subfolders, WhatsApp's
-     * legacy path, etc.) that isn't already watched and wasn't explicitly dismissed.
-     * Run on every app start, on every SyncWorker cycle, and whenever monitoring starts
-     * - not just once - so a folder that didn't exist yet at first install (e.g.
-     * WhatsApp's media folder, if WhatsApp was installed/used after this app was) still
-     * gets picked up once it does exist.
-     */
     suspend fun syncDefaultFolders() {
         val existingPaths = getWatchedFoldersOnce().map { it.path }.toSet()
         val dismissedPaths = db.dismissedDefaultFolderDao().getAllPaths().toSet()
@@ -130,6 +122,29 @@ class ArchiveRepository(
             db.archivedFileDao().deleteById(entity.id)
         }
         expired.size
+    }
+
+    // Renames the archived copy on disk and in the database together. Returns false
+    // instead of overwriting if a file with the new name already exists.
+    suspend fun renameArchivedFile(id: Long, newFileName: String): Boolean = withContext(Dispatchers.IO) {
+        val entity = db.archivedFileDao().getById(id) ?: return@withContext false
+        val oldFile = File(entity.archivedPath)
+        val newFile = File(archiveDir, newFileName)
+        if (newFile.exists()) return@withContext false
+        val renamed = oldFile.renameTo(newFile)
+        if (renamed) {
+            db.archivedFileDao().updateFileNameAndPath(id, newFileName, newFile.absolutePath)
+        }
+        renamed
+    }
+
+    // Deletes one archived file immediately, ahead of its normal retention schedule.
+    suspend fun deleteArchivedFile(id: Long): Boolean = withContext(Dispatchers.IO) {
+        val entity = db.archivedFileDao().getById(id) ?: return@withContext false
+        val file = File(entity.archivedPath)
+        if (file.exists()) file.delete()
+        db.archivedFileDao().deleteById(id)
+        true
     }
 
     suspend fun exportAll(context: Context, destinationTreeUri: Uri): Int = withContext(Dispatchers.IO) {

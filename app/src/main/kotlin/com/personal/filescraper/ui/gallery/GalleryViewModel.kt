@@ -27,7 +27,6 @@ class GalleryViewModel(
     settingsRepository: SettingsRepository
 ) : ViewModel() {
 
-    // Re-emits every 30s purely to keep the "time remaining" countdown fresh.
     private val ticker = flow {
         while (true) {
             emit(System.currentTimeMillis())
@@ -55,6 +54,12 @@ class GalleryViewModel(
 
     suspend fun exportAll(context: Context, destinationUri: Uri): Int =
         repository.exportAll(context, destinationUri)
+
+    suspend fun renameFile(id: Long, newName: String): Boolean =
+        repository.renameArchivedFile(id, newName)
+
+    suspend fun deleteFile(id: Long): Boolean =
+        repository.deleteArchivedFile(id)
 
     companion object {
         private const val TICK_MILLIS = 30_000L

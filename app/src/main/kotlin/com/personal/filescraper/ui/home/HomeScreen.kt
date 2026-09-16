@@ -28,6 +28,7 @@ fun HomeScreen(viewModel: HomeViewModel) {
 
     var hasAllFilesAccess by remember { mutableStateOf(PermissionUtils.hasAllFilesAccess()) }
     var hasNotificationPermission by remember { mutableStateOf(PermissionUtils.hasNotificationPermission(context)) }
+    var isIgnoringBatteryOpt by remember { mutableStateOf(PermissionUtils.isIgnoringBatteryOptimizations(context)) }
 
     val allFilesLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         hasAllFilesAccess = PermissionUtils.hasAllFilesAccess()
@@ -35,9 +36,13 @@ fun HomeScreen(viewModel: HomeViewModel) {
     val notifPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasNotificationPermission = granted
     }
+    val batteryOptLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        isIgnoringBatteryOpt = PermissionUtils.isIgnoringBatteryOptimizations(context)
+    }
 
     LaunchedEffect(Unit) {
         hasAllFilesAccess = PermissionUtils.hasAllFilesAccess()
+        isIgnoringBatteryOpt = PermissionUtils.isIgnoringBatteryOptimizations(context)
     }
 
     Column(
@@ -75,6 +80,15 @@ fun HomeScreen(viewModel: HomeViewModel) {
                 description = "Enable notifications to see when files are archived and cleaned up.",
                 buttonLabel = "Enable",
                 onClick = { notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+        if (!isIgnoringBatteryOpt) {
+            PermissionCard(
+                title = "Monitoring may stop in the background",
+                description = "Some phones aggressively kill background apps to save battery. Exempting this app is the real fix for monitoring dropping unexpectedly.",
+                buttonLabel = "Fix this",
+                onClick = { batteryOptLauncher.launch(PermissionUtils.batteryOptimizationExemptionIntent(context)) }
             )
             Spacer(Modifier.height(12.dp))
         }

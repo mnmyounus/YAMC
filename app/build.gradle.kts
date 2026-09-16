@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.personal.filescraper"
-        minSdk = 27
+        minSdk = 29
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -18,10 +18,6 @@ android {
 
     buildTypes {
         release {
-            // R8 shrinking + resource shrinking is what takes this from ~59MB (an
-            // unshrunk debug build) down to a realistic size for what this app
-            // actually does. Signed with the debug key so it installs with zero
-            // extra setup - see README for what that tradeoff means.
             isMinifyEnabled = true
             isShrinkResources = true
             signingConfig = signingConfigs.getByName("debug")
@@ -79,8 +75,11 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.6.0")
 
-    // Export-to-user-chosen-folder support (SAF)
     implementation("androidx.documentfile:documentfile:1.0.1")
+
+    // Built-in video playback for the archive viewer - no external app, no internet needed
+    implementation("androidx.media3:media3-exoplayer:1.3.1")
+    implementation("androidx.media3:media3-ui:1.3.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

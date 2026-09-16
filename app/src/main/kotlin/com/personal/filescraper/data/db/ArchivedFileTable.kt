@@ -19,7 +19,7 @@ data class ArchivedFileEntity(
     val archivedPath: String,
     val fileName: String,
     val mimeType: String,
-    val fileType: String, // FileType.name
+    val fileType: String,
     val sizeBytes: Long,
     val archivedAtMillis: Long,
     val sourceFolder: String
@@ -30,16 +30,20 @@ interface ArchivedFileDao {
     @Query("SELECT * FROM archived_files ORDER BY archivedAtMillis DESC")
     fun observeAll(): Flow<List<ArchivedFileEntity>>
 
+    @Query("SELECT * FROM archived_files WHERE id = :id")
+    suspend fun getById(id: Long): ArchivedFileEntity?
+
     @Query("SELECT * FROM archived_files WHERE archivedAtMillis < :cutoffMillis")
     suspend fun getExpired(cutoffMillis: Long): List<ArchivedFileEntity>
 
-    // IGNORE on conflict: originalPath is unique, so a race between FileObserver and
-    // the periodic SyncWorker detecting the same file just no-ops the second insert.
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(entity: ArchivedFileEntity): Long
 
     @Query("DELETE FROM archived_files WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("UPDATE archived_files SET fileName = :fileName, archivedPath = :archivedPath WHERE id = :id")
+    suspend fun updateFileNameAndPath(id: Long, fileName: String, archivedPath: String)
 
     @Query("SELECT COUNT(*) FROM archived_files WHERE originalPath = :originalPath")
     suspend fun existsByOriginalPath(originalPath: String): Int

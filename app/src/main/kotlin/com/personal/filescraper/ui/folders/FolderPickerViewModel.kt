@@ -30,20 +30,19 @@ class FolderPickerViewModel(
         }
     }
 
-    // No isDefault check here on purpose - a folder that was auto-added by default
-    // (e.g. one of many Android/media/ subfolders) needs to be just as removable as
-    // one added manually. That was previously blocked, which is exactly what made it
-    // hard to prune the folder list down when it was causing lag.
-    fun removeFolder(path: String, context: Context) {
+    // isDefault is passed through so a removed default folder gets marked "dismissed"
+    // and won't be silently re-added by the next default-folder sync.
+    fun removeFolder(path: String, isDefault: Boolean, context: Context) {
         viewModelScope.launch {
             repository.removeWatchedFolder(path)
+            if (isDefault) {
+                repository.dismissDefaultFolder(path)
+            }
             refreshServiceIfActive(context)
         }
     }
 
     fun renameFolder(path: String, newDisplayName: String) {
-        // Renaming only changes the label shown in this list - it doesn't affect which
-        // path is watched, so there's no need to restart the monitoring service for it.
         viewModelScope.launch {
             repository.renameWatchedFolder(path, newDisplayName)
         }

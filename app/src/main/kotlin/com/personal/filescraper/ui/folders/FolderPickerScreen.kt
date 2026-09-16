@@ -51,7 +51,7 @@ fun FolderPickerScreen(viewModel: FolderPickerViewModel) {
                     items(folders, key = { it.path }) { folder ->
                         SwipeToDeleteFolderRow(
                             folder = folder,
-                            onDelete = { viewModel.removeFolder(folder.path, context) },
+                            onDelete = { viewModel.removeFolder(folder.path, folder.isDefault, context) },
                             onEditRequest = { renameTarget = folder }
                         )
                         HorizontalDivider()

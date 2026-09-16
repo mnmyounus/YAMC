@@ -15,18 +15,14 @@ object FileUtils {
 
     private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp")
     private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "mov", "avi", "3gp", "webm", "m4v")
-    private val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "wav", "ogg", "opus", "aac", "flac", "wma", "amr")
     private val DOCUMENT_EXTENSIONS = setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "rtf")
+    private val TEXT_EXTENSIONS = setOf("txt", "csv")
 
     fun classify(file: File): FileType {
-    val ext = file.extension.lowercase()
-    val path = file.absolutePath
-    
-    if (path.contains("WhatsApp/.Statuses") && ext == "tmp") return FileType.IMAGE
+        val ext = file.extension.lowercase()
         return when {
             ext in IMAGE_EXTENSIONS -> FileType.IMAGE
             ext in VIDEO_EXTENSIONS -> FileType.VIDEO
-            ext in AUDIO_EXTENSIONS -> FileType.AUDIO
             ext in DOCUMENT_EXTENSIONS -> FileType.DOCUMENT
             else -> FileType.OTHER
         }
@@ -34,18 +30,17 @@ object FileUtils {
 
     fun isSupportedType(file: File): Boolean = classify(file) != FileType.OTHER
 
-    fun isLikelyTemporary(file: File): Boolean {
-    val name = file.name
-    val path = file.absolutePath
-    val isWaStatus = path.contains("WhatsApp/.Statuses")
+    // Formats with a genuine built-in viewer in this app.
+    fun isPdf(file: File): Boolean = file.extension.lowercase() == "pdf"
+    fun isPlainText(file: File): Boolean = file.extension.lowercase() in TEXT_EXTENSIONS
 
-    return !isWaStatus && (
-        name.startsWith(".") ||
-        name.endsWith(".tmp") ||
-        name.endsWith(".crdownload") ||
-        name.endsWith(".part") ||
-        name.endsWith(".partial")
-    )
+    fun isLikelyTemporary(file: File): Boolean {
+        val name = file.name
+        return name.startsWith(".") ||
+            name.endsWith(".tmp") ||
+            name.endsWith(".crdownload") ||
+            name.endsWith(".part") ||
+            name.endsWith(".partial")
     }
 
     fun mimeTypeFor(file: File): String {
@@ -53,48 +48,28 @@ object FileUtils {
         return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
     }
 
-    /** Default folders monitored out of the box: DCIM, Pictures, Downloads, every
-     * app-specific subfolder under Android/media/, and (if present) WhatsApp's legacy
-     * top-level media folder - see the comment below for why that last one matters. */
     fun defaultFolders(): List<Pair<String, String>> {
-    val root = Environment.getExternalStorageDirectory()
-    val list = mutableListOf(
-        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM).absolutePath to "DCIM",
-        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath to "Pictures",
-        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath to "Downloads",
-        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC).absolutePath to "Music" // add this too
-    )
+        val root = Environment.getExternalStorageDirectory()
+        val list = mutableListOf(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM).absolutePath to "DCIM",
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath to "Pictures",
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath to "Downloads"
+        )
 
-    // === PASTE THESE 4 BLOCKS HERE ===
-    // WhatsApp Status folders for View Once
-    val waStatuses = File(root, "Android/media/com.whatsapp/WhatsApp Media/.Statuses")
-    if (waStatuses.isDirectory) list.add(waStatuses.absolutePath to "WhatsApp Status")
+        val mediaDir = File(root, "Android/media")
+        mediaDir.listFiles()?.filter { it.isDirectory }?.forEach { sub ->
+            list.add(sub.absolutePath to sub.name)
+        }
 
-    val waStatusesTmp = File(root, "Android/media/com.whatsapp/WhatsApp Media/.Statuses/.tmp")
-    if (waStatusesTmp.isDirectory) list.add(waStatusesTmp.absolutePath to "WhatsApp Status TMP")
+        val legacyWhatsAppMedia = File(root, "WhatsApp/Media")
+        if (legacyWhatsAppMedia.isDirectory) {
+            list.add(legacyWhatsAppMedia.absolutePath to "WhatsApp (legacy path)")
+        }
 
-    // WhatsApp Audio folders
-    val waAudio = File(root, "Android/media/com.whatsapp/WhatsApp Media/WhatsApp Audio")
-    if (waAudio.isDirectory) list.add(waAudio.absolutePath to "WhatsApp Audio")
-    
-    val waPtt = File(root, "Android/media/com.whatsapp/WhatsApp Media/WhatsApp Ptt")
-    if (waPtt.isDirectory) list.add(waPtt.absolutePath to "WhatsApp Voice Notes")
-    // ===================================
-
-    val mediaDir = File(root, "Android/media")
-    mediaDir.listFiles()?.filter { it.isDirectory }?.forEach { sub ->
-        list.add(sub.absolutePath to sub.name)
+        return list
     }
 
-    val legacyWhatsAppMedia = File(root, "WhatsApp/Media")
-    if (legacyWhatsAppMedia.isDirectory) {
-        list.add(legacyWhatsAppMedia.absolutePath to "WhatsApp (legacy path)")
-    }
-
-    return list
-}
-
-        
+    // Fallback for formats without a built-in viewer (doc/docx/xls/xlsx/ppt/pptx/rtf).
     fun openWithDefaultApp(context: Context, path: String) {
         try {
             val file = File(path)
@@ -106,6 +81,21 @@ object FileUtils {
             context.startActivity(intent)
         } catch (e: Exception) {
             Log.e("FileUtils", "Could not open $path", e)
+        }
+    }
+
+    fun shareFile(context: Context, path: String) {
+        try {
+            val file = File(path)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = mimeTypeFor(file)
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, "Share"))
+        } catch (e: Exception) {
+            Log.e("FileUtils", "Could not share $path", e)
         }
     }
 }
